@@ -17,7 +17,9 @@
 * under the License.
 */
 
-import {retrieve, defaults, extend, each, isObject, map, isString, isNumber, isFunction} from 'zrender/src/core/util';
+import {
+    retrieve, defaults, extend, each, isObject, map, isString, isNumber, isFunction, retrieve2
+} from 'zrender/src/core/util';
 import * as graphic from '../../util/graphic';
 import {getECData} from '../../util/innerStore';
 import {createTextStyle} from '../../label/labelStyle';
@@ -30,7 +32,7 @@ import {shouldShowAllLabels} from '../../coord/axisHelper';
 import { AxisBaseModel } from '../../coord/AxisBaseModel';
 import { ZRTextVerticalAlign, ZRTextAlign, ECElement, ColorString } from '../../util/types';
 import { AxisBaseOption } from '../../coord/axisCommonTypes';
-import Element from 'zrender/src/Element';
+import type Element from 'zrender/src/Element';
 import { PathStyleProps } from 'zrender/src/graphic/Path';
 import OrdinalScale from '../../scale/Ordinal';
 import { prepareLayoutList, hideOverlap } from '../../label/labelLayoutHelper';
@@ -68,7 +70,7 @@ export interface AxisBuilderCfg {
     tickDirection?: number
     labelDirection?: number
     /**
-     * Usefull when onZero.
+     * Useful when onZero.
      */
     labelOffset?: number
     /**
@@ -776,6 +778,29 @@ function buildAxisLabel(
 
         const tickCoord = axis.dataToCoord(tickValue);
 
+        const align = itemLabelModel.getShallow('align', true)
+            || labelLayout.textAlign;
+        const alignMin = retrieve2(
+            itemLabelModel.getShallow('alignMinLabel', true),
+            align
+        );
+        const alignMax = retrieve2(
+            itemLabelModel.getShallow('alignMaxLabel', true),
+            align
+        );
+
+        const verticalAlign = itemLabelModel.getShallow('verticalAlign', true)
+            || itemLabelModel.getShallow('baseline', true)
+            || labelLayout.textVerticalAlign;
+        const verticalAlignMin = retrieve2(
+            itemLabelModel.getShallow('verticalAlignMinLabel', true),
+            verticalAlign
+        );
+        const verticalAlignMax = retrieve2(
+            itemLabelModel.getShallow('verticalAlignMaxLabel', true),
+            verticalAlign
+        );
+
         const textEl = new graphic.Text({
             x: tickCoord,
             y: opt.labelOffset + opt.labelDirection * labelMargin,
@@ -784,11 +809,12 @@ function buildAxisLabel(
             z2: 10 + (labelItem.level || 0),
             style: createTextStyle(itemLabelModel, {
                 text: formattedLabel,
-                align: itemLabelModel.getShallow('align', true)
-                    || labelLayout.textAlign,
-                verticalAlign: itemLabelModel.getShallow('verticalAlign', true)
-                    || itemLabelModel.getShallow('baseline', true)
-                    || labelLayout.textVerticalAlign,
+                align: index === 0
+                    ? alignMin
+                    : index === labels.length - 1 ? alignMax : align,
+                verticalAlign: index === 0
+                    ? verticalAlignMin
+                    : index === labels.length - 1 ? verticalAlignMax : verticalAlign,
                 fill: isFunction(textColor)
                     ? textColor(
                         // (1) In category axis with data zoom, tick is not the original
@@ -810,6 +836,16 @@ function buildAxisLabel(
         });
         textEl.anid = 'label_' + tickValue;
 
+        graphic.setTooltipConfig({
+            el: textEl,
+            componentModel: axisModel,
+            itemName: formattedLabel,
+            formatterParamsExtra: {
+                isTruncated: () => textEl.isTruncated,
+                value: rawLabel,
+                tickIndex: index
+            }
+        });
 
         // Pack data for mouse event
         if (triggerEvent) {
